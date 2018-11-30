@@ -1,3 +1,4 @@
+# CNN practice code with Dog and Cat image data from kaggle
 import cv2
 import numpy as np
 import os
@@ -5,54 +6,50 @@ from random import shuffle
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-train_dir = 'train'
-test_dir = 'test'
-img_size = 50
-lr = 1e-3 #learning rate
+train_dir = 'all/train'
+test_dir = 'all/test'
 
-def label_img(img) :
-    # cat.12.jpg
-    word_label = img.split('.')[-3]
-    if word_label == 'cat' :
-        return [1, 0]
-    elif word_label == 'dog' :
-        return [0, 1]
+# define image size and learning rate
+
+img_size = 50
+lr = 1e-3
 
 # read trianing data
-def create_train_data() :
-    training_data = []
-    for img in tqdm(os.listdir(train_dir)) :
-        if not img.endswith('.jpg') :
-            continue
+train_data = []
+for pic in tqdm(os.listdir(train_dir)) :
+    if not pic.endswith('.jpg') :
+        continue
 
-        label = label_img(img)
-        path = os.path.join(train_dir, img)
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        img = cv2.resize(img, (img_size, img_size))
-        training_data.append([np.array(img), np.array(label)])
-
-    shuffle(training_data)
-    return training_data
-
-train_data = create_train_data()
+    img_class = pic.split('.')[0]
+    if img_class == 'cat':
+        lable = [1, 0]
+    if img_class == 'dog':
+        lable = [0, 1]
+        
+    path = os.path.join(train_dir, pic)
+    pic = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    pic = cv2.resize(pic, (img_size, img_size))
+        
+    train_data.append([np.array(pic), np.array(label)])
 
 # process test data
-def process_test_data() :
-    testing_data = []
-    for img in tqdm(os.listdir(test_dir)) :
-        if not img.endswith('.jpg') :
-            continue
+test_data = []
+for pic in tqdm(os.listdir(test_dir)) :
+    if not pic.endswith('.jpg') :
+        continue
 
-        path = os.path.join(test_dir, img)
-        img_num = img.split('.')[0]
-        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        img = cv2.resize(img, (img_size, img_size))
-        testing_data.append([np.array(img), img_num])
+    img_num = pic.split('.')[0]
 
-    shuffle(testing_data)
-    return testing_data
+    path = os.path.join(test_dir, pic)
+    pic = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    pic = cv2.resize(pic, (img_size, img_size))
+        
+    test_data.append([np.array(pic), img_num])
 
-test_data = process_test_data()
+# shuffle train and test dataset
+shuffle(train_data)
+shuffle(test_data)
+
 
 import tflearn
 from tflearn.layers.conv import conv_2d, max_pool_2d
@@ -63,32 +60,33 @@ import tensorflow as tf
 tf.reset_default_graph()
 
 # input layers
-convnet = input_data(shape = [None, img_size, img_size, 1], name = 'input')
+net = input_data(shape = [None, img_size, img_size, 1], name = 'input')
 
-# will use 5 CNN and 5 maxpooling
-convnet = conv_2d(convnet, 32, 5, activation = 'relu')
-convnet = max_pool_2d(convnet, 5)
+# will use 5 CNN and 3 maxpooling according to Alexnet
+net = conv_2d(net, 96, 11, strides = 4 activation = 'relu')
+net = max_pool_2d(net, 3, strides = 2)
 
-convnet = conv_2d(convnet, 64, 5, activation = 'relu')
-convnet = max_pool_2d(convnet, 5)
+net = conv_2d(net, 256, 5, activation = 'relu')
+net = max_pool_2d(net, 3, strides = 2)
 
-convnet = conv_2d(convnet, 128, 5, activation = 'relu')
-convnet = max_pool_2d(convnet, 5)
+net = conv_2d(net, 384, 3, activation = 'relu')
 
-convnet = conv_2d(convnet, 64, 5, activation = 'relu')
-convnet = max_pool_2d(convnet, 5)
+net = conv_2d(net, 384, 3, activation = 'relu')
 
-convnet = conv_2d(convnet, 32, 5, activation = 'relu')
-convnet = max_pool_2d(convnet, 5)
+net = conv_2d(net, 256, 3, activation = 'relu')
+net = max_pool_2d(net, 3, strides = 2)
 
-# 2 fully connected layers
-convnet = fully_connected(convnet, 1024, activation = 'relu')
-convnet = dropout(convnet, 0.8)
+# 3 fully connected layers
+net = fully_connected(net, 4096, activation = 'tanh')
+net = dropout(net, 0.5)
 
-convnet = fully_connected(convnet, 2, activation = 'softmax')
-convnet = regression(convnet, optimizer = 'adam', learning_rate = lr, loss = 'categorical_crossentropy', name = 'targets')
+net = fully_connected(net, 4096, activation = 'tanh')
+net = dropout(net, 0.5)
 
-model = tflearn.DNN(convnet, tensorboard_dir = 'log')
+net = fully_connected(net, 17, activation = 'softmax')
+net = regression(net, optimizer = 'adam', learning_rate = lr, loss = 'categorical_crossentropy', name = 'targets')
+
+model = tflearn.DNN(net, tensorboard_dir = 'log')
 train = train_data[:-500]
 vali = train_data[-500:]
 
@@ -98,32 +96,26 @@ Y = np.array([i[1] for i in train], dtype = np.float64)
 X_vali = np.array([i[0] for i in vali], dtype = np.float64).reshape(-1, img_size, img_size, 1)
 Y_vali = np.array([i[1] for i in vali], dtype = np.float64)
 
-# training
-model.fit({'input': X}, {'targets': Y}, n_epoch = 3, validation_set = ({'input': X_vali}, {'targets': Y_vali}), snapshot_step = 500, show_metric = True, run_id = 'model')
+model.fit({'input': X}, {'targets': Y}, n_epoch = 1000, validation_set = ({'input': X_vali}, {'targets': Y_vali}), snapshot_step = 200, show_metric = True, batch_size = 64, snapshot_step = 200, snapshot_epoch = False, run_id = 'model')
 
-# reading test test_data
-test_data = process_test_data()
 
-# output some prediction on the test data
-fig = plt.figure()
-for num, data in enumerate(test_data[:16]) :
-    img_num = data[1]
+# visualize the prediction
+for i, data in enumerate(test_data[:9]):
     img_data = data[0]
-    y = fig.add_subplot(4, 4, num + 1)
+    
     orig = img_data
-    data = img_data.reshape(img_size, img_size, 1)
-    model_out = model.predict([data])[0]
+    test = img_data.reshape(img_size, img_size, 1)
+    
+    model_out = model.predict([test])[0]
 
-    if np.argmax(model_out) == 1 :
+    if np.argmax(model_out) == 1:
         label = 'Dog'
-
-    else :
+    else:
         label = 'Cat'
 
-    y.imshow(orig, cmap = 'gray')
+    y = plt.figure().add_subplot(3, 3, i + 1)
+    y.imshow(orig)
     plt.title(label)
-    y.axes.get_xaxis().set_visible(False)
-    y.axes.get_yaxis().set_visible(False)
 
 plt.tight_layout()
 plt.show()
